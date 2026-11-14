@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/MaxsysLab/skillwarden/security/advisories/new
+    about: Do NOT open a public issue. Report privately here, or see SECURITY.md.

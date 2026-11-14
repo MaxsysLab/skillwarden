@@ -1,0 +1,15 @@
+# Keeps the exact action pins in .github/workflows current.
+#
+# The pins are exact rather than floating majors because astral-sh/setup-uv
+# stopped publishing major and minor tags at v8, deliberately, as an
+# anti-supply-chain-attack measure: `@v9` does not exist, only `@v9.0.0` or a
+# commit sha. An exact pin that nothing bumps is a pin that rots, and this file
+# is what stops that: security patches arrive as a PR instead of never.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

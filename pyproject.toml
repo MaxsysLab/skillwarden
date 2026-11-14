@@ -1,0 +1,89 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "skillwarden"
+version = "1.0.0"
+description = "A security scanner for AI agent skills. Reads a skill before you install it and reports what it finds. Small enough to read, and it never calls a partial scan a pass."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Maxsys International Incorporated and SkillWarden contributors" }]
+keywords = ["security", "ai-agents", "skills", "vulnerability-scanner", "sarif", "claude-code"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+# Deliberately lean: six dependencies and no agent framework. The pipeline is plain
+# code that one person can read. Claude is the default backend for the optional AI
+# pass, behind a small interface another backend can implement.
+dependencies = [
+    "anthropic>=0.40.0",
+    "httpx>=0.28.0",
+    "pydantic>=2.10.0",
+    "pyyaml>=6.0.1",
+    "rich>=13.9.0",
+    "typer>=0.15.0",
+]
+
+[project.optional-dependencies]
+yara = ["yara-python>=4.5.0"]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/MaxsysLab/skillwarden"
+Repository = "https://github.com/MaxsysLab/skillwarden"
+Issues = "https://github.com/MaxsysLab/skillwarden/issues"
+Changelog = "https://github.com/MaxsysLab/skillwarden/blob/main/CHANGELOG.md"
+
+[project.scripts]
+skillwarden = "skillwarden.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/skillwarden"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# tests/unit/test_fp_audit.py imports `scripts.fp_audit`; make the repo root importable
+# regardless of the cwd pytest is launched from (CI runs `pytest -q -W error` bare).
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# The "ambiguous Unicode" lints are off: comments and the rule tables use such
+# characters on purpose, and the fixtures must contain them.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# Analyzer modules are regex/signature pattern tables: long single-line patterns
+# read better unwrapped than split across continuations.
+"src/skillwarden/analyzers/*" = ["E501"]
+# Fixtures are deliberately malicious sample skills: they must contain the very
+# anti-patterns we scan for, so don't lint them.
+"tests/fixtures/*" = ["ALL"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true

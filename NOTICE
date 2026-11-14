@@ -1,0 +1,17 @@
+SkillWarden
+Copyright 2026 Maxsys International Incorporated (maxsys.org)
+
+SkillWarden is published as an open-source project by Maxsys International
+Incorporated, a nonprofit, through MaxsysLab (https://github.com/MaxsysLab).
+It is built and contributed by CSEAM Technology Corporation, with contributions
+from students, interns, and volunteers.
+
+Licensed under the Apache License, Version 2.0 (the "LICENSE" file in this repository).
+
+Acknowledgement
+
+SkillWarden was written after studying SkillSpector, NVIDIA's open-source security
+scanner for AI agent skills (https://github.com/NVIDIA/SkillSpector, Apache-2.0).
+It follows the same staged approach (static analysis, then an optional semantic
+pass), the same threat categories, SARIF output and baseline suppression. The code
+is our own.

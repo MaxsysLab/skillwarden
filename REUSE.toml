@@ -1,0 +1,13 @@
+version = 1
+SPDX-PackageName = "SkillWarden"
+SPDX-PackageSupplier = "Maxsys International Incorporated <https://maxsys.org>"
+SPDX-PackageDownloadLocation = "https://github.com/MaxsysLab/skillwarden"
+
+# Licence and copyright for every file in the repository. New source files may carry
+# an in-file SPDX-License-Identifier header as well; this entry covers those that
+# do not. The licence text is in LICENSE and LICENSES/Apache-2.0.txt.
+[[annotations]]
+path = ["**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Maxsys International Incorporated and SkillWarden contributors"
+SPDX-License-Identifier = "Apache-2.0"

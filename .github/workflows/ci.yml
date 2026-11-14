@@ -1,0 +1,178 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly: the dependency audit, and the false-positive audit against the benign
+    # skills as they are published that day. Mondays 03:50 UTC.
+    - cron: "50 3 * * 1"
+  # Run the weekly audits on demand.
+  workflow_dispatch:
+
+# Least privilege by default; each job opts into what it needs.
+permissions: {}
+
+jobs:
+  quality:
+    name: Lint, types and tests (Python ${{ matrix.python }})
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Set up Python
+        run: uv python install ${{ matrix.python }}
+      - name: Sync
+        run: uv sync --python ${{ matrix.python }} --all-extras --dev
+      - name: Lint
+        run: uv run ruff check src tests scripts
+      - name: Type-check (strict)
+        run: uv run mypy src/skillwarden
+      # Warnings as errors: a deprecation ignored today is a break found later.
+      - name: Test
+        run: uv run pytest -q -W error
+      # The command itself, on the bundled samples: the hostile one must be refused
+      # (exit 1) and the harmless one must pass (exit 0).
+      - name: The samples scan as expected
+        run: |
+          set +e
+          uv run skillwarden scan tests/fixtures/malicious_skill --no-llm
+          [ "$?" -eq 1 ] || { echo "the malicious sample was not refused"; exit 1; }
+          uv run skillwarden scan tests/fixtures/benign_skill --no-llm
+          [ "$?" -eq 0 ] || { echo "the benign sample did not pass"; exit 1; }
+
+  audit:
+    name: Weekly audits
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Sync
+        run: uv sync --all-extras --dev
+      # Known vulnerabilities in what we depend on. Fails the run on any finding.
+      - name: Dependency audit (pip-audit)
+        run: uv run --with pip-audit pip-audit --skip-editable
+      # The rules against the benign skills as published today: none may rate critical.
+      # Published skills change, so a failure here is a rule to look at, not a broken build.
+      - name: False-positive audit
+        run: uv run python scripts/fp_audit.py --fetch
+      - name: Dependency freshness report
+        run: uv pip list --outdated || true
+
+  # Developer Certificate of Origin: every commit in a pull request carries a
+  # Signed-off-by line (git commit -s). See CONTRIBUTING.md.
+  dco:
+    name: Sign-off (DCO)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Every commit is signed off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          fail=0
+          for c in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            if ! git log -1 --format=%B "$c" | grep -Eq '^Signed-off-by: .+ <.+@.+>$'; then
+              echo "Missing Signed-off-by: $(git log -1 --format='%h %s' "$c")"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "Sign off with: git commit --amend -s   (or: git rebase --signoff $BASE)"
+          fi
+          exit "$fail"
+
+  reuse-lint:
+    name: Licence metadata (REUSE)
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: fsfe/reuse-action@bb774aa972c2a89ff34781233d275075cbddf542 # v5.0.0
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+
+  # gitleaks is run from its pinned release, checksum verified. The gitleaks GitHub
+  # Action needs a licence key for organization repositories, so it is not used.
+  secret-scan:
+    name: Secret scan
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -fsSL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf gitleaks.tar.gz -C "$RUNNER_TEMP/gitleaks" gitleaks
+          rm gitleaks.tar.gz
+          "$RUNNER_TEMP/gitleaks/gitleaks" git --redact --no-banner .
+
+  # Supply chain: every action is referenced by a full commit SHA, never a floating tag.
+  pin-check:
+    name: Actions are pinned
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: pinact
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PINACT_SHA256: 8fcbf1b3e95551c82fd995535e3c1defa70e23299ce36eb3afd6c98778de6ca0
+        run: |
+          curl -fsSL -o pinact.tar.gz https://github.com/suzuki-shunsuke/pinact/releases/download/v4.1.0/pinact_linux_amd64.tar.gz
+          echo "${PINACT_SHA256}  pinact.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/pinact"
+          tar -xzf pinact.tar.gz -C "$RUNNER_TEMP/pinact" pinact
+          rm pinact.tar.gz
+          "$RUNNER_TEMP/pinact/pinact" run --check
