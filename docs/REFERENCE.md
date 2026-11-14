@@ -290,9 +290,11 @@ tag is public.
 These checks catch mistakes. They are not a defence against someone who can push to the
 repository, because the workflow that runs is the one at the tagged commit.
 
-We do not move a published tag. A release that turns out wrong is followed by a new
-one. If the workflow fails after the tag is pushed, re-run the failed jobs only. If the
-fault is in the workflow file itself, the fix goes out as the next version.
+A version tag cannot be moved or deleted once it is pushed, and a published release
+cannot have its files changed: the repository's settings refuse both, for maintainers
+too. So a release that turns out wrong is followed by a new one. If the workflow
+refuses a tag, that version number is spent, and the fix goes out as the next one. If a
+job fails for a passing reason, re-run the failed jobs only.
 
 ## Environment variables
 
