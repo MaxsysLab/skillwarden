@@ -1,5 +1,6 @@
 [build-system]
-requires = ["hatchling"]
+# One known version, so that a release is built by the backend it was tried with.
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [project]

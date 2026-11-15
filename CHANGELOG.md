@@ -6,7 +6,9 @@ All notable changes to SkillWarden are recorded here. The format follows
 
 ## [Unreleased]
 
-Nothing has been tagged yet. This section becomes the first public release.
+## [1.0.0] - 2026-11-14
+
+The first public release.
 
 SkillWarden was built inside our own software lab before it was published, where it
 stood at an internal version 0.1.0. This repository starts from the tool as it is after
@@ -87,8 +89,14 @@ to rely on.
   maintainers, issue and pull request templates, code owners.
 - Checks on every pull request: lint, strict types and tests on Python 3.12 and 3.13,
   the two bundled samples scanned, sign-off (DCO), licence metadata (REUSE), dependency
-  review, secret scan, pinned actions, and the OpenSSF Scorecard. Weekly: a dependency
-  audit and the false-positive audit against the benign skills as published that day.
+  review, secret scan, pinned actions, the package build, and the OpenSSF Scorecard.
+  Weekly: a dependency audit and the false-positive audit against the benign skills as
+  published that day.
+- Releases are cut from a signed tag on `main` by a workflow. It builds the package,
+  lists the packages it was tested with (an SBOM in CycloneDX, from the lock file),
+  attests where and how the files were built (provenance), publishes them with those
+  signed statements beside them, and then checks the published files as a user would.
+  How to verify a release is in `docs/REFERENCE.md`.
 
 ### Known limits
 
@@ -104,7 +112,6 @@ to rely on.
   evidence.
 - On a backend with a small context window, a skill full of long runs of backticks
   makes the AI pass fail, and the scan is incomplete.
-
 - A skill that bundles an archive (a zip, a tarball, an Office file) cannot be scanned
   to completion: archives inside a skill are not unpacked, and the scan says so.
 - The fixed rules read text. They are strict with documentation that discusses

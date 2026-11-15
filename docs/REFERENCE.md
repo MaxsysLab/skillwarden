@@ -222,6 +222,80 @@ label never rises more than one step above the most severe single finding: many 
 findings together can make a skill high, but not critical; many low ones stop at
 medium. A finding whose confidence is under 0.5 counts one step lower for this purpose.
 
+## Releases
+
+A release is a signed version tag on `main` (`v1.0.0`) and a GitHub release that
+carries five files:
+
+| File | What it is |
+|---|---|
+| `skillwarden-X.Y.Z-py3-none-any.whl` | The package, ready to install |
+| `skillwarden-X.Y.Z.tar.gz` | The source it was built from |
+| `skillwarden-X.Y.Z.cdx.json` | The parts list (an SBOM, CycloneDX 1.5): the packages in `uv.lock`, which is what the tests ran with and what `uv sync` installs. The optional extras are not in it. A `pip install` of the wheel works out the dependencies afresh and may pick newer versions |
+| `skillwarden-X.Y.Z.provenance.sigstore.json` | The signed statement of where and how the three files above were built |
+| `skillwarden-X.Y.Z.sbom.sigstore.json` | The signed statement that ties the parts list to the wheel and the source archive |
+
+**Verifying a release.** The files are built by the release workflow of this
+repository, on GitHub's runners and not on anyone's own machine. With the GitHub CLI,
+for any of the first three files:
+
+```bash
+gh attestation verify skillwarden-1.0.0-py3-none-any.whl --repo MaxsysLab/skillwarden \
+  --signer-workflow MaxsysLab/skillwarden/.github/workflows/release.yml \
+  --source-ref refs/tags/v1.0.0
+```
+
+A pass means that a run of that workflow, started by that tag, attested this exact
+file. Without the last two options the check is much weaker: it passes for a file
+attested by any workflow in the repository.
+
+The statement about the parts list is checked on the wheel and the source archive, not
+on the parts list itself, and always with `--predicate-type https://cyclonedx.org/bom`.
+To check against the statements that came with the release, and not the copies GitHub
+keeps, add `--bundle` with the matching `.sigstore.json` file: the provenance one as it
+is, the SBOM one together with that `--predicate-type`.
+
+A pass does not tell you that the code is free of faults, or who made the tag. The tag
+is signed, and GitHub marks it Verified when the signature belongs to a key registered
+on the tagger's GitHub account.
+
+**Cutting a release** (maintainers).
+
+Once, before your first release: register your signing key on your GitHub account as a
+signing key (an authentication key is not enough), and set `user.email` to an address
+that is verified on that account. Sign a commit with it and see that GitHub marks the
+commit Verified. A tag GitHub cannot verify is refused by the workflow, and by then the
+tag is public.
+
+1. In one pull request, set the version in `pyproject.toml` and in
+   `src/skillwarden/__init__.py`, and give the changes a dated entry in `CHANGELOG.md`
+   (`## [X.Y.Z] - YYYY-MM-DD`, the day of the release). The checks fail if the three
+   disagree, or if the entry uses Markdown the release notes cannot carry.
+2. When it is merged and `main` is green, tag the commit `main` points at, and look at
+   the tag before it leaves your machine:
+
+   ```bash
+   git fetch origin
+   git tag -s vX.Y.Z origin/main -m "SkillWarden X.Y.Z"
+   git cat-file -t vX.Y.Z    # must print: tag
+   git push origin vX.Y.Z
+   ```
+
+3. The release workflow does the rest. It stops if the tag is lightweight, not verified
+   by GitHub, not on a commit of `main` itself, or not named after the version in the
+   files. It builds the package, writes the parts list, attests the files, and
+   publishes the release with the changelog entry as its notes. Then it downloads the
+   published files and checks them as a user would.
+
+These checks catch mistakes. They are not a defence against someone who can push to the
+repository, because the workflow that runs is the one at the tagged commit.
+
+A version tag cannot be moved or deleted once it is pushed, and a published release
+cannot have its files changed: the repository's settings refuse both, for maintainers
+too. So a release that turns out wrong is followed by a new one. If the workflow
+refuses a tag, that version number is spent, and the fix goes out as the next one. If a
+job fails for a passing reason, re-run the failed jobs only.
+
 ## Environment variables
 
 | Variable | Default | What it sets |
