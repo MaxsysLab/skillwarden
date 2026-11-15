@@ -3,6 +3,10 @@ expanded static pattern categories."""
 
 from __future__ import annotations
 
+import time
+
+import pytest
+
 from skillwarden.analyzers.base import ScanContext
 from skillwarden.analyzers.mcp_least_privilege import McpLeastPrivilegeAnalyzer
 from skillwarden.analyzers.osv_client import OsvAnalyzer
@@ -53,6 +57,74 @@ def test_taint_constant_is_clean():
 def test_taint_fixture(taint_skill):
     result = scan(taint_skill, use_llm=False)
     assert any(f.rule_id == "TT-001" for f in result.findings)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "import sys\nre.compile(sys.argv[1])\n",
+        "import sys\nregex.compile(sys.argv[1])\n",
+        "import re, sys\nre.compile(sys.argv[1])\n",
+        "import re, sys\nre.compile(sys.argv[1], re.IGNORECASE)\n",
+        "import re, sys\nre.compile(pattern=sys.argv[1], flags=re.I)\n",
+        "import regex, sys\nregex.compile(sys.argv[1])\n",
+        "import regex, sys\nregex.compile(sys.argv[1], flags=regex.IGNORECASE)\n",
+        "import re as r, sys\nr.compile(sys.argv[1])\n",
+        "import regex as rx, sys\nrx.compile(sys.argv[1])\n",
+        "import sys\nfrom re import compile\ncompile(sys.argv[1])\n",
+        "import sys\nfrom regex import compile\ncompile(sys.argv[1])\n",
+        "import sys; from re import compile; compile(sys.argv[1])\n",
+        "import sys\nfrom re import compile as rc\nrc(sys.argv[1])\n",
+        "import sys\nfrom regex import compile as rxc\nrxc(sys.argv[1])\n",
+        (
+            "import sys\n"
+            "try:\n    import regex as re\nexcept ImportError:\n    import re\n"
+            "re.compile(sys.argv[1])\n"
+        ),
+        (
+            "import sys\n"
+            "try:\n    import regex\nexcept ImportError:\n    regex = None\n"
+            "if regex is not None:\n    regex.compile(sys.argv[1])\n"
+        ),
+        "import argparse, re, sys\nopts = vars(argparse.Namespace())\nre.compile(sys.argv[1])\n",
+    ],
+)
+def test_taint_regex_compile_is_quiet(code: str):
+    findings = TaintAnalyzer().run(_ctx("a.py", code))
+    assert not [f for f in findings if f.rule_id == "TT-001"]
+
+
+def test_taint_regex_markdown_doc_does_not_shadow_module():
+    py_code = "import regex, sys\nregex.compile(sys.argv[1])\n"
+    ctx = ScanContext(
+        target="t",
+        components=[
+            Component(
+                path="docs/regex.md", type="markdown", lines=1, size_bytes=8, executable=False
+            ),
+            Component(
+                path="run.py", type="python", lines=2, size_bytes=len(py_code), executable=True
+            ),
+        ],
+        file_cache={"docs/regex.md": "# notes\n", "run.py": py_code},
+    )
+    assert TaintAnalyzer().run(ctx) == []
+
+
+def test_taint_propagates_past_regex_compile_to_real_sink():
+    code = "import re, sys\npat = re.compile(sys.argv[1])\neval(pat.pattern)\n"
+    findings = TaintAnalyzer().run(_ctx("a.py", code))
+    assert [(f.rule_id, f.line) for f in findings] == [("TT-001", 3)]
+
+
+def test_taint_long_line_stays_fast():
+    filler = "a" * 100_000
+    code = f"import re, sys\nx = sys.argv[1] + '{filler}'\nre.compile(x)\n"
+    start = time.perf_counter()
+    findings = TaintAnalyzer().run(_ctx("a.py", code))
+    elapsed = time.perf_counter() - start
+    assert findings == []
+    assert elapsed < 1.0
 
 
 # --- MCP -----------------------------------------------------------------

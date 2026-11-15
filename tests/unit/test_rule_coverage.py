@@ -385,6 +385,11 @@ TAINTED_INTO_A_SINK = [
     'compile(src, "x", "exec")',
     'builtins.compile(src, "x", "exec")',
     "b.compile(src, 'x', 'exec')",
+    '__builtins__.compile(src, "x", "exec")',
+    '__import__("builtins").compile(src, "x", "exec")',
+    '[builtins][0].compile(src, "x", "exec")',
+    'compile(source=src, filename="x", mode="exec")',
+    'builtins.compile(source=src, filename="x", mode="exec")',
     "subprocess.run(cmd, shell=True)",
     "subprocess.run(cmd, shell=use_shell)",
     "subprocess.run(cmd, **options)",
@@ -424,6 +429,77 @@ def test_untrusted_input_into_a_sink_is_high(call):
             Component(path="run.py", type="python", lines=6, size_bytes=len(src), executable=True)
         ],
         file_cache={"run.py": src},
+    )
+    found = TaintAnalyzer().run(ctx)
+    assert [(f.rule_id, f.severity) for f in found] == [("TT-001", Severity.HIGH)]
+
+
+DISGUISED_COMPILE = [
+    'import builtins as re, sys\nre.compile(sys.argv[1], "x", "exec")\n',
+    "import builtins as re, sys\nre.compile(sys.argv[1])\n",
+    'import builtins as regex, sys\nregex.compile(sys.argv[1], "x", "exec")\n',
+    'import builtins, re, sys\nre = builtins\nre.compile(sys.argv[1], "x", "exec")\n',
+    'import sys\ndef run(re):\n    re.compile(sys.argv[1], "x", "exec")\n',
+    'import sys\nfrom builtins import compile as c\nc(sys.argv[1], "x", "exec")\n',
+    'import sys\nfrom .re import compile\ncompile(sys.argv[1], "x", "exec")\n',
+    'import sys\nif False:\n    from re import compile\ncompile(sys.argv[1], "x", "exec")\n',
+    'import sys\ndef decoy():\n    from re import compile\ncompile(sys.argv[1], "x", "exec")\n',
+    'import sys\ncompile(sys.argv[1], "x", "exec")\nfrom re import compile\n',
+    'import sys\nfrom re import compile\ndel compile\ncompile(sys.argv[1], "x", "exec")\n',
+    "import re, sys\nre.compile = eval\nre.compile(sys.argv[1])\n",
+    'import re, sys\nm = re\nsetattr(m, "compile", eval)\nre.compile(sys.argv[1])\n',
+    'import re, sys\nre.__dict__["compile"] = eval\nre.compile(sys.argv[1])\n',
+    (
+        "import sys, types\n"
+        'sys.modules["re"] = types.SimpleNamespace(compile=eval)\n'
+        "import re\nre.compile(sys.argv[1])\n"
+    ),
+]
+
+
+@pytest.mark.parametrize("src", DISGUISED_COMPILE)
+def test_disguised_compile_still_fires(src: str):
+    ctx = ScanContext(
+        target="t",
+        components=[
+            Component(
+                path="run.py",
+                type="python",
+                lines=src.count("\n") + 1,
+                size_bytes=len(src),
+                executable=True,
+            )
+        ],
+        file_cache={"run.py": src},
+    )
+    found = TaintAnalyzer().run(ctx)
+    assert [(f.rule_id, f.severity) for f in found] == [("TT-001", Severity.HIGH)]
+
+
+@pytest.mark.parametrize("shadow_path", ["regex.py", "re.py", "regex/__init__.py"])
+def test_local_regex_module_shadows_exemption(shadow_path: str):
+    mod_name = "re" if shadow_path == "re.py" else "regex"
+    run_src = f"import {mod_name}, sys\n{mod_name}.compile(sys.argv[1])\n"
+    shadow_src = "def compile(x):\n    return x\n"
+    ctx = ScanContext(
+        target="t",
+        components=[
+            Component(
+                path=shadow_path,
+                type="python",
+                lines=2,
+                size_bytes=len(shadow_src),
+                executable=True,
+            ),
+            Component(
+                path="run.py",
+                type="python",
+                lines=2,
+                size_bytes=len(run_src),
+                executable=True,
+            ),
+        ],
+        file_cache={shadow_path: shadow_src, "run.py": run_src},
     )
     found = TaintAnalyzer().run(ctx)
     assert [(f.rule_id, f.severity) for f in found] == [("TT-001", Severity.HIGH)]

@@ -82,12 +82,6 @@ KNOWN_FALSE_ALARMS: dict[str, tuple[str, frozenset[str]]] = {
             }
         ),
     ),
-    # scripts/recalc.py hands a file name from the command line to LibreOffice, and
-    # builds a regular expression from workbook names (`re.compile` read as `compile`).
-    "anthropic-skills/skills/xlsx": (
-        "a script that passes a file name to another program",
-        frozenset({"TT-001"}),
-    ),
 }
 
 GITLINK_MODE = 0o160000  # a submodule entry: a directory in the worktree, not a file
